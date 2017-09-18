@@ -180,47 +180,13 @@ namespace DocumentDB.ChangeFeedProcessor
         {
             await this.InitializeAsync();
 
-            long remaining = 0;
-            ChangeFeedOptions options = new ChangeFeedOptions
-            {
-                MaxItemCount = 1
-            };
+            var docdb = new Refactor.DocDb(this.documentClient);
 
+            long remaining = 0;
+            
             foreach (DocumentServiceLease existingLease in await this.leaseManager.ListLeases())
             {
-                options.PartitionKeyRangeId = existingLease.PartitionId;
-                options.RequestContinuation = existingLease.ContinuationToken;
-                IDocumentQuery<Document> query = this.documentClient.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
-                FeedResponse<Document> response = null;
-
-                try
-                {
-                    response = await query.ExecuteNextAsync<Document>();
-                    long parsedLSNFromSessionToken = TryConvertToNumber(ParseAmountFromSessionToken(response.SessionToken));
-                    long lastSequenceNumber = response.Count > 0 ? TryConvertToNumber(response.First().GetPropertyValue<string>(LSNPropertyName)) : parsedLSNFromSessionToken;
-                    long partitionRemaining = parsedLSNFromSessionToken - lastSequenceNumber;
-                    remaining += partitionRemaining < 0 ? 0 : partitionRemaining;
-                }
-                catch (DocumentClientException ex)
-                {
-                    ExceptionDispatchInfo exceptionDispatchInfo = ExceptionDispatchInfo.Capture(ex);
-                    DocumentClientException dcex = (DocumentClientException)exceptionDispatchInfo.SourceException;
-                    if ((StatusCode.NotFound == (StatusCode)dcex.StatusCode && SubStatusCode.ReadSessionNotAvailable != (SubStatusCode)GetSubStatusCode(dcex))
-                        || StatusCode.Gone == (StatusCode)dcex.StatusCode)
-                    {
-                        // We are not explicitly handling Splits here to avoid any collision with an Observer that might have picked this up and managing the split
-                        TraceLog.Error(string.Format("GetEstimateWork > Partition {0}: resource gone (subStatus={1}).", existingLease.PartitionId, GetSubStatusCode(dcex)));
-                    }
-                    else if (StatusCode.TooManyRequests == (StatusCode)dcex.StatusCode ||
-                                    StatusCode.ServiceUnavailable == (StatusCode)dcex.StatusCode)
-                    {
-                        TraceLog.Warning(string.Format("GetEstimateWork > Partition {0}: retriable exception : {1}", existingLease.PartitionId, dcex.Message));
-                    }
-                    else
-                    {
-                        TraceLog.Error(string.Format("GetEstimateWork > Partition {0}: Unhandled exception", ex.Error.Message));
-                    }
-                }
+                remaining += await docdb.GetEstimatedRemainingWork(existingLease, this.collectionSelfLink);
             }
 
             return remaining;
