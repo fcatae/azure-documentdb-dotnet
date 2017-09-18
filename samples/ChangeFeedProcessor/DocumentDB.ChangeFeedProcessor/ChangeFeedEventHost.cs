@@ -94,6 +94,7 @@ namespace DocumentDB.ChangeFeedProcessor
         //ChangeFeedOptions changeFeedOptions;
 
         ChangeFeedHostOptions options;
+
         PartitionManager<DocumentServiceLease> partitionManager;
         ILeaseManager<DocumentServiceLease> leaseManager;
         ICheckpointManager checkpointManager;
@@ -621,15 +622,7 @@ namespace DocumentDB.ChangeFeedProcessor
                 },
                 this.options.DegreeOfParallelism);
         }
-
-        Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync()
-        {
-            var docdb = this._docdb;
-            Debug.Assert(docdb != null);
-
-            return docdb.EnumPartitionKeyRangesAsync();            
-        }
-
+        
         async Task StartAsync()
         {
             await this.InitializeAsync();
@@ -763,56 +756,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
             return isCheckpointNeeded;
         }
-
-        private static long TryConvertToNumber(string number)
-        {
-            if (string.IsNullOrEmpty(number))
-            {
-                return 0;
-            }
-
-            long parsed = 0;
-            if (!long.TryParse(number, NumberStyles.Any, CultureInfo.InvariantCulture, out parsed))
-            {
-                TraceLog.Warning(string.Format(CultureInfo.InvariantCulture, "Cannot parse number '{0}'.", number));
-                return 0;
-            }
-
-            return parsed;
-        }
-
-        private static string ParseAmountFromSessionToken(string sessionToken)
-        {
-            if (string.IsNullOrEmpty(sessionToken))
-            {
-                return string.Empty;
-            }
-
-            int separatorIndex = sessionToken.IndexOf(':');
-            return sessionToken.Substring(separatorIndex + 1);
-        }
-
-        private static int GetDocumentCount(ResourceResponse<DocumentCollection> response)
-        {
-            Debug.Assert(response != null);
-
-            var resourceUsage = response.ResponseHeaders["x-ms-resource-usage"];
-            if (resourceUsage != null)
-            {
-                var parts = resourceUsage.Split(';');
-                foreach (var part in parts)
-                {
-                    var name = part.Split('=');
-                    if (string.Equals(name[0], "documentsCount", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return int.Parse(name[1]);
-                    }
-                }
-            }
-
-            return -1;
-        }
-
+        
         private class WorkerData
         {
             public WorkerData(Task task, IChangeFeedObserver observer, ChangeFeedObserverContext context, CancellationTokenSource cancellation)
