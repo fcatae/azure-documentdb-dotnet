@@ -1,5 +1,6 @@
 ﻿using DocumentDB.ChangeFeedProcessor.DocumentLeaseStore;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -11,6 +12,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
     class CheckpointServices
     {
         private ICheckpointManager _checkpointMgr;
+        ConcurrentDictionary<string, CheckpointStats> _statsSinceLastCheckpoint = new ConcurrentDictionary<string, CheckpointStats>();
 
         public CheckpointServices(ICheckpointManager checkpointMgr)
         {
@@ -79,5 +81,36 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             return await Task.FromResult<DocumentServiceLease>(result);
         }
 
+        public void AddOrUpdateStats(string addedRangeId)
+        {
+            this._statsSinceLastCheckpoint.AddOrUpdate(
+            addedRangeId,
+            new CheckpointStats(),
+            (partitionId, existingStats) => existingStats);
+        }
+
+        public CheckpointStats TryRemoveStats(string goneRangeId)
+        {
+            CheckpointStats removedStatsUnused = null;
+            this._statsSinceLastCheckpoint.TryRemove(goneRangeId, out removedStatsUnused);
+
+            return removedStatsUnused;
+        }
+
+        public CheckpointStats GetLastCheckpointStats(string partitionId)
+        {
+            CheckpointStats checkpointStats = null;
+            if (!this._statsSinceLastCheckpoint.TryGetValue(partitionId, out checkpointStats) || checkpointStats == null)
+            {
+                // It could be that the lease was created by different host and we picked it up.
+                checkpointStats = this._statsSinceLastCheckpoint.AddOrUpdate(
+                    partitionId,
+                    new CheckpointStats(),
+                    (existingPartitionId, existingStats) => existingStats);
+                Trace.TraceWarning(string.Format("Added stats for partition '{0}' for which the lease was picked up after the host was started.", partitionId));
+            }
+
+            return checkpointStats;
+        }
     }
 }

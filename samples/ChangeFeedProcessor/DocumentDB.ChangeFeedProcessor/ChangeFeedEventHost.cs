@@ -101,7 +101,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
         Refactor.CheckpointServices _checkpointSvcs;
         // ICheckpointManager checkpointManager; // use checkpointSvcs
-        ConcurrentDictionary<string, CheckpointStats> statsSinceLastCheckpoint = new ConcurrentDictionary<string, CheckpointStats>();
+        // ConcurrentDictionary<string, CheckpointStats> statsSinceLastCheckpoint = new ConcurrentDictionary<string, CheckpointStats>();
 
         IChangeFeedObserverFactory observerFactory;
         ConcurrentDictionary<string, WorkerData> partitionKeyRangeIdToWorkerMap;
@@ -242,17 +242,8 @@ namespace DocumentDB.ChangeFeedProcessor
                         closeReason = ChangeFeedObserverCloseReason.ObserverError;
                         throw;
                     }
-                    
-                    CheckpointStats checkpointStats = null;
-                    if (!this.statsSinceLastCheckpoint.TryGetValue(lease.PartitionId, out checkpointStats) || checkpointStats == null)
-                    {
-                        // It could be that the lease was created by different host and we picked it up.
-                        checkpointStats = this.statsSinceLastCheckpoint.AddOrUpdate(
-                            lease.PartitionId, 
-                            new CheckpointStats(), 
-                            (partitionId, existingStats) => existingStats);
-                        Trace.TraceWarning(string.Format("Added stats for partition '{0}' for which the lease was picked up after the host was started.", lease.PartitionId));
-                    }
+
+                    CheckpointStats checkpointStats = _checkpointSvcs.GetLastCheckpointStats(lease.PartitionId);
 
                     IDocumentQuery<Document> query = docdb.CreateDocumentChangeFeedQuery(options);
                                         
@@ -534,10 +525,12 @@ namespace DocumentDB.ChangeFeedProcessor
             await addedPartitionIds.ForEachAsync(
                 async addedRangeId =>
                 {
-                    this.statsSinceLastCheckpoint.AddOrUpdate(
-                        addedRangeId,
-                        new CheckpointStats(),
-                        (partitionId, existingStats) => existingStats);
+                    _checkpointSvcs.AddOrUpdateStats(addedRangeId);
+
+                    //this.statsSinceLastCheckpoint.AddOrUpdate(
+                    //    addedRangeId,
+                    //    new CheckpointStats(),
+                    //    (partitionId, existingStats) => existingStats);
 
                     string continuationToken = null;
                     string parentIds = string.Empty;
@@ -589,8 +582,10 @@ namespace DocumentDB.ChangeFeedProcessor
                     await this.leaseManager.DeleteAsync(existingLeases[goneRangeId]);
                     TraceLog.Informational(string.Format("Deleted lease for gone (splitted) partition '{0}', continuation '{1}'", goneRangeId, existingLeases[goneRangeId].ContinuationToken));
 
-                    CheckpointStats removedStatsUnused;
-                    this.statsSinceLastCheckpoint.TryRemove(goneRangeId, out removedStatsUnused);
+                    _checkpointSvcs.TryRemoveStats(goneRangeId);
+
+                    //CheckpointStats removedStatsUnused;
+                    //this.statsSinceLastCheckpoint.TryRemove(goneRangeId, out removedStatsUnused);
                 },
                 this.options.DegreeOfParallelism);
         }
