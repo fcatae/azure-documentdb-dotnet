@@ -32,12 +32,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         public string CollectionResourceId { get => _collectionResourceId; }
         public int DocumentCount { get => _documentCount; }
         public string CollectionName { get => _collectionName; }
-
-        public DocDb(DocumentClient documentClient)
-        {
-            this._documentClient = documentClient;
-        }
-
+        
         public async Task<string> InitializeAsync(DocumentCollectionInfo collectionLocation)
         {
             var documentClient = new DocumentClient(collectionLocation.Uri, collectionLocation.MasterKey, collectionLocation.ConnectionPolicy);
