@@ -263,7 +263,7 @@ namespace DocumentDB.ChangeFeedProcessor
                         Trace.TraceWarning(string.Format("Added stats for partition '{0}' for which the lease was picked up after the host was started.", lease.PartitionId));
                     }
 
-                    IDocumentQuery<Document> query = docdb.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
+                    IDocumentQuery<Document> query = docdb.CreateDocumentChangeFeedQuery(options);
 
                     //IDocumentQuery<Document> query = this.documentClient.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
 
@@ -494,7 +494,7 @@ namespace DocumentDB.ChangeFeedProcessor
         async Task InitializeAsync()
         {
             var docdb = new Refactor.DocDb();
-            this.collectionSelfLink = await docdb.InitializeAsync(this.collectionLocation);
+            await docdb.InitializeAsync(this.collectionLocation);
 
             this._docdb = docdb;
 

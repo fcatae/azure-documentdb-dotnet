@@ -33,7 +33,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         public int DocumentCount { get => _documentCount; }
         public string CollectionName { get => _collectionName; }
         
-        public async Task<string> InitializeAsync(DocumentCollectionInfo collectionLocation)
+        public async Task InitializeAsync(DocumentCollectionInfo collectionLocation)
         {
             var documentClient = new DocumentClient(collectionLocation.Uri, collectionLocation.MasterKey, collectionLocation.ConnectionPolicy);
 
@@ -52,8 +52,6 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             this._collectionSelfLink = collection.SelfLink;
             this._documentCount = GetDocumentCount(collectionResponse);
             this._collectionName = collectionLocation.CollectionName;
-
-            return _collectionSelfLink;
         }
 
         public async Task<Dictionary<string, PartitionKeyRange>> ListPartitionRange()
@@ -88,9 +86,9 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             return partitionKeyRanges;
         }
 
-        public IDocumentQuery<Document> CreateDocumentChangeFeedQuery(string collectionSelfLink, ChangeFeedOptions options)
+        public IDocumentQuery<Document> CreateDocumentChangeFeedQuery(ChangeFeedOptions options)
         {
-            return _documentClient.CreateDocumentChangeFeedQuery(collectionSelfLink, options);
+            return _documentClient.CreateDocumentChangeFeedQuery(_collectionSelfLink, options);
         }
 
         public async Task<long> GetEstimatedRemainingWork(DocumentServiceLease existingLease)
