@@ -665,23 +665,10 @@ namespace DocumentDB.ChangeFeedProcessor
                 this.options.DegreeOfParallelism);
         }
 
-        async Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
+        Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
         {
-            Debug.Assert(!string.IsNullOrWhiteSpace(collectionSelfLink), "collectionSelfLink");
-
-            string partitionkeyRangesPath = string.Format(CultureInfo.InvariantCulture, "{0}/pkranges", collectionSelfLink);
-
-            FeedResponse<PartitionKeyRange> response = null;
-            var partitionKeyRanges = new List<PartitionKeyRange>();
-            do
-            {
-                FeedOptions feedOptions = new FeedOptions { MaxItemCount = 1000, RequestContinuation = response != null ? response.ResponseContinuation : null };
-                response = await this.documentClient.ReadPartitionKeyRangeFeedAsync(partitionkeyRangesPath, feedOptions);
-                partitionKeyRanges.AddRange(response);
-            }
-            while (!string.IsNullOrEmpty(response.ResponseContinuation));
-
-            return partitionKeyRanges;
+            var docdb = new Refactor.DocDb(this.documentClient);
+            return docdb.EnumPartitionKeyRangesAsync(collectionSelfLink);            
         }
 
         async Task StartAsync()

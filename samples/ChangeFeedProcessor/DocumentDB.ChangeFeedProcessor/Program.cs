@@ -13,6 +13,8 @@ namespace DocumentDB.ChangeFeedProcessor
         public static void Main(string[] args)
         {
             Console.WriteLine("Test program");
+
+            DocumentFeedObserver.StartChangeFeedHost().Wait();
         }
     }
 
@@ -35,7 +37,7 @@ namespace DocumentDB.ChangeFeedProcessor
             return Task.FromResult(true);
         }
 
-        static async Task StartChangeFeedHost()
+        public static async Task StartChangeFeedHost()
         {
             string hostName = Guid.NewGuid().ToString();
             DocumentCollectionInfo documentCollectionLocation = new DocumentCollectionInfo
