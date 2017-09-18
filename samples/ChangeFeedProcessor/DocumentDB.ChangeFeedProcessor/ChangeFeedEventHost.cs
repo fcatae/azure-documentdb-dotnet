@@ -91,8 +91,8 @@ namespace DocumentDB.ChangeFeedProcessor
         Refactor.DocDb _docdb;
         //DocumentClient documentClient; //remove documentClient dependency -- use DocDb instead
         //string collectionSelfLink; // use docdb
+        //ChangeFeedOptions changeFeedOptions;
 
-        ChangeFeedOptions changeFeedOptions;
         ChangeFeedHostOptions options;
         PartitionManager<DocumentServiceLease> partitionManager;
         ILeaseManager<DocumentServiceLease> leaseManager;
@@ -141,11 +141,12 @@ namespace DocumentDB.ChangeFeedProcessor
             if (hostOptions.MinPartitionCount > hostOptions.MaxPartitionCount) throw new ArgumentException("hostOptions.MinPartitionCount cannot be greater than hostOptions.MaxPartitionCount");
 
             this.collectionLocation = CanoninicalizeCollectionInfo(documentCollectionLocation);
-            this.changeFeedOptions = changeFeedOptions;
             this.options = hostOptions;
             this.HostName = hostName;
             this.auxCollectionLocation = CanoninicalizeCollectionInfo(auxCollectionLocation);
             this.partitionKeyRangeIdToWorkerMap = new ConcurrentDictionary<string, WorkerData>();
+
+            this._docdb = new Refactor.DocDb(changeFeedOptions);
         }
 
         /// <summary>Gets the host name, which is a unique name for the instance.</summary>
@@ -221,14 +222,7 @@ namespace DocumentDB.ChangeFeedProcessor
             CancellationTokenSource cancellation = new CancellationTokenSource();
 
             // Create ChangeFeedOptions to use for this worker.
-            ChangeFeedOptions options = new ChangeFeedOptions
-            {
-                MaxItemCount = this.changeFeedOptions.MaxItemCount,
-                PartitionKeyRangeId = this.changeFeedOptions.PartitionKeyRangeId,
-                SessionToken = this.changeFeedOptions.SessionToken,
-                StartFromBeginning = this.changeFeedOptions.StartFromBeginning,
-                RequestContinuation = this.changeFeedOptions.RequestContinuation
-            };
+            ChangeFeedOptions options = docdb.GetChangeFeedOptions();
 
             var workerTask = await Task.Factory.StartNew(async () =>
             {
@@ -493,11 +487,11 @@ namespace DocumentDB.ChangeFeedProcessor
 
         async Task InitializeAsync()
         {
-            var docdb = new Refactor.DocDb();
+            var docdb = _docdb;
+            Debug.Assert(docdb != null);
+
             await docdb.InitializeAsync(this.collectionLocation);
-
-            this._docdb = docdb;
-
+            
             // Grab the options-supplied prefix if present otherwise leave it empty.
             string optionsPrefix = this.options.LeasePrefix ?? string.Empty;
 

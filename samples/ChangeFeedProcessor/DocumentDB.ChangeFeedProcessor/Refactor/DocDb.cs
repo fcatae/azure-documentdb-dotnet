@@ -23,9 +23,11 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         private string _collectionName;
         private string _databaseResourceId;
         private string _collectionResourceId;
+        private ChangeFeedOptions _changeFeedOptions;
 
-        public DocDb()
+        public DocDb(ChangeFeedOptions changeFeedOptions)
         {
+            this._changeFeedOptions = changeFeedOptions;
         }
 
         public string DatabaseResourceId { get => _databaseResourceId; }
@@ -33,6 +35,20 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         public int DocumentCount { get => _documentCount; }
         public string CollectionName { get => _collectionName; }
         
+        public ChangeFeedOptions GetChangeFeedOptions()
+        {
+            ChangeFeedOptions options = new ChangeFeedOptions
+            {
+                MaxItemCount = this._changeFeedOptions.MaxItemCount,
+                PartitionKeyRangeId = this._changeFeedOptions.PartitionKeyRangeId,
+                SessionToken = this._changeFeedOptions.SessionToken,
+                StartFromBeginning = this._changeFeedOptions.StartFromBeginning,
+                RequestContinuation = this._changeFeedOptions.RequestContinuation
+            };
+
+            return options;
+        }
+
         public async Task InitializeAsync(DocumentCollectionInfo collectionLocation)
         {
             var documentClient = new DocumentClient(collectionLocation.Uri, collectionLocation.MasterKey, collectionLocation.ConnectionPolicy);
