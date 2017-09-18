@@ -89,7 +89,10 @@ namespace DocumentDB.ChangeFeedProcessor
 
         string leasePrefix;
         string collectionSelfLink;
-        DocumentClient documentClient;
+
+        Refactor.DocDb _docdb;
+        //DocumentClient documentClient; //remove documentClient dependency -- use DocDb instead
+
         ChangeFeedOptions changeFeedOptions;
         ChangeFeedHostOptions options;
         PartitionManager<DocumentServiceLease> partitionManager;
@@ -180,7 +183,8 @@ namespace DocumentDB.ChangeFeedProcessor
         {
             await this.InitializeAsync();
 
-            var docdb = new Refactor.DocDb(this.documentClient);
+            var docdb = this._docdb;
+            Debug.Assert(docdb != null);
 
             long remaining = 0;
             
@@ -203,7 +207,8 @@ namespace DocumentDB.ChangeFeedProcessor
 
         async Task IPartitionObserver<DocumentServiceLease>.OnPartitionAcquiredAsync(DocumentServiceLease lease)
         {
-            var docdb = new Refactor.DocDb(this.documentClient);
+            var docdb = this._docdb;
+            Debug.Assert(docdb != null);
 
             Debug.Assert(lease != null && !string.IsNullOrEmpty(lease.Owner), "lease");
             TraceLog.Informational(string.Format("Host '{0}' partition {1}: acquired!", this.HostName, lease.PartitionId));
@@ -489,23 +494,16 @@ namespace DocumentDB.ChangeFeedProcessor
 
         async Task InitializeAsync()
         {
-            this.documentClient = new DocumentClient(this.collectionLocation.Uri, this.collectionLocation.MasterKey, this.collectionLocation.ConnectionPolicy);
+            var docdb = new Refactor.DocDb();
+            this.collectionSelfLink = await docdb.InitializeAsync(this.collectionLocation);
 
-            Uri databaseUri = UriFactory.CreateDatabaseUri(this.collectionLocation.DatabaseName);
-            Database database = await this.documentClient.ReadDatabaseAsync(databaseUri);
-
-            Uri collectionUri = UriFactory.CreateDocumentCollectionUri(this.collectionLocation.DatabaseName, this.collectionLocation.CollectionName);
-            ResourceResponse<DocumentCollection> collectionResponse = await this.documentClient.ReadDocumentCollectionAsync(
-                collectionUri,
-                new RequestOptions { PopulateQuotaInfo = true });
-            DocumentCollection collection = collectionResponse.Resource;
-            this.collectionSelfLink = collection.SelfLink;
+            this._docdb = docdb;
 
             // Grab the options-supplied prefix if present otherwise leave it empty.
             string optionsPrefix = this.options.LeasePrefix ?? string.Empty;
 
             // Beyond this point all access to collection is done via this self link: if collection is removed, we won't access new one using same name by accident.
-            this.leasePrefix = string.Format(CultureInfo.InvariantCulture, "{0}{1}_{2}_{3}", optionsPrefix, this.collectionLocation.Uri.Host, database.ResourceId, collection.ResourceId);
+            this.leasePrefix = string.Format(CultureInfo.InvariantCulture, "{0}{1}_{2}_{3}", optionsPrefix, this.collectionLocation.Uri.Host, docdb.DatabaseResourceId, docdb.CollectionResourceId);
 
             var leaseManager = new DocumentServiceLeaseManager(
                 this.auxCollectionLocation, 
@@ -528,15 +526,11 @@ namespace DocumentDB.ChangeFeedProcessor
             // If it's not deleted, it's not stale. If it's deleted, it's not stale as it doesn't exist.
             await this.leaseManager.CreateLeaseStoreIfNotExistsAsync();
 
-            var ranges = new Dictionary<string, PartitionKeyRange>();
-            foreach (var range in await this.EnumPartitionKeyRangesAsync(this.collectionSelfLink))
-            {
-                ranges.Add(range.Id, range);
-            }
+            var range = await docdb.ListPartitionRange();
 
-            TraceLog.Informational(string.Format("Source collection: '{0}', {1} partition(s), {2} document(s)", this.collectionLocation.CollectionName, ranges.Count, GetDocumentCount(collectionResponse)));
+            TraceLog.Informational(string.Format("Source collection: '{0}', {1} partition(s), {2} document(s)", docdb.CollectionName, range.Count, docdb.DocumentCount));
 
-            await this.CreateLeases(ranges);
+            await this.CreateLeases(range);
 
             this.partitionManager = new PartitionManager<DocumentServiceLease>(this.HostName, this.leaseManager, this.options);
             await this.partitionManager.SubscribeAsync(this);
@@ -637,7 +631,9 @@ namespace DocumentDB.ChangeFeedProcessor
 
         Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
         {
-            var docdb = new Refactor.DocDb(this.documentClient);
+            var docdb = this._docdb;
+            Debug.Assert(docdb != null);
+
             return docdb.EnumPartitionKeyRangesAsync(collectionSelfLink);            
         }
 

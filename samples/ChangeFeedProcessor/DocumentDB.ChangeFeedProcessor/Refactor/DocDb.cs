@@ -19,17 +19,26 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 
         private DocumentClient _documentClient;
         private string _collectionSelfLink;
+        private int _documentCount;
+        private string _collectionName;
+        private string _databaseResourceId;
+        private string _collectionResourceId;
 
         public DocDb()
         {
         }
+
+        public string DatabaseResourceId { get => _databaseResourceId; }
+        public string CollectionResourceId { get => _collectionResourceId; }
+        public int DocumentCount { get => _documentCount; }
+        public string CollectionName { get => _collectionName; }
 
         public DocDb(DocumentClient documentClient)
         {
             this._documentClient = documentClient;
         }
 
-        async Task InitializeAsync(DocumentCollectionInfo collectionLocation)
+        public async Task<string> InitializeAsync(DocumentCollectionInfo collectionLocation)
         {
             var documentClient = new DocumentClient(collectionLocation.Uri, collectionLocation.MasterKey, collectionLocation.ConnectionPolicy);
 
@@ -42,8 +51,25 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
                 new RequestOptions { PopulateQuotaInfo = true });
             DocumentCollection collection = collectionResponse.Resource;
 
+            this._databaseResourceId = database.ResourceId;
+            this._collectionResourceId = collection.ResourceId;
             this._documentClient = documentClient;
             this._collectionSelfLink = collection.SelfLink;
+            this._documentCount = GetDocumentCount(collectionResponse);
+            this._collectionName = collectionLocation.CollectionName;
+
+            return _collectionSelfLink;
+        }
+
+        public async Task<Dictionary<string, PartitionKeyRange>> ListPartitionRange()
+        {
+            var ranges = new Dictionary<string, PartitionKeyRange>();
+            foreach (var range in await EnumPartitionKeyRangesAsync(_collectionSelfLink))
+                {
+                ranges.Add(range.Id, range);
+            }
+
+            return ranges;
         }
 
         public async Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
@@ -156,6 +182,27 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
                 if (int.TryParse(valueSubStatus, NumberStyles.Integer, CultureInfo.InvariantCulture, out subStatusCode))
                 {
                     return subStatusCode;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int GetDocumentCount(ResourceResponse<DocumentCollection> response)
+        {
+            Debug.Assert(response != null);
+
+            var resourceUsage = response.ResponseHeaders["x-ms-resource-usage"];
+            if (resourceUsage != null)
+            {
+                var parts = resourceUsage.Split(';');
+                foreach (var part in parts)
+                {
+                    var name = part.Split('=');
+                    if (string.Equals(name[0], "documentsCount", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return int.Parse(name[1]);
+                    }
                 }
             }
 
