@@ -35,16 +35,21 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         public int DocumentCount { get => _documentCount; }
         public string CollectionName { get => _collectionName; }
         
-        public ChangeFeedOptions GetChangeFeedOptions()
+        public ChangeFeedOptions GetChangeFeedOptions(string partitionKeyRangeId, string continuationToken)
         {
             ChangeFeedOptions options = new ChangeFeedOptions
             {
+                PartitionKeyRangeId = partitionKeyRangeId ?? this._changeFeedOptions.PartitionKeyRangeId,
                 MaxItemCount = this._changeFeedOptions.MaxItemCount,
-                PartitionKeyRangeId = this._changeFeedOptions.PartitionKeyRangeId,
                 SessionToken = this._changeFeedOptions.SessionToken,
                 StartFromBeginning = this._changeFeedOptions.StartFromBeginning,
                 RequestContinuation = this._changeFeedOptions.RequestContinuation
             };
+
+            if (!string.IsNullOrEmpty(continuationToken))
+            {
+                options.RequestContinuation = lease.ContinuationToken;
+            }
 
             return options;
         }

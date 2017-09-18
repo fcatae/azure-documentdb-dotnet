@@ -223,8 +223,8 @@ namespace DocumentDB.ChangeFeedProcessor
             CancellationTokenSource cancellation = new CancellationTokenSource();
 
             // Create ChangeFeedOptions to use for this worker.
-            ChangeFeedOptions options = docdb.GetChangeFeedOptions();
-
+            ChangeFeedOptions options = docdb.GetChangeFeedOptions(lease.PartitionId, lease.ContinuationToken);
+            
             var workerTask = await Task.Factory.StartNew(async () =>
             {
                 ChangeFeedObserverCloseReason? closeReason = null;
@@ -240,13 +240,7 @@ namespace DocumentDB.ChangeFeedProcessor
                         closeReason = ChangeFeedObserverCloseReason.ObserverError;
                         throw;
                     }
-
-                    options.PartitionKeyRangeId = lease.PartitionId;
-                    if (!string.IsNullOrEmpty(lease.ContinuationToken))
-                    {
-                        options.RequestContinuation = lease.ContinuationToken;
-                    }
-
+                    
                     CheckpointStats checkpointStats = null;
                     if (!this.statsSinceLastCheckpoint.TryGetValue(lease.PartitionId, out checkpointStats) || checkpointStats == null)
                     {
@@ -259,9 +253,7 @@ namespace DocumentDB.ChangeFeedProcessor
                     }
 
                     IDocumentQuery<Document> query = docdb.CreateDocumentChangeFeedQuery(options);
-
-                    //IDocumentQuery<Document> query = this.documentClient.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
-
+                                        
                     TraceLog.Verbose(string.Format("Worker start: partition '{0}', continuation '{1}'", lease.PartitionId, lease.ContinuationToken));
 
                     string lastContinuation = options.RequestContinuation;
