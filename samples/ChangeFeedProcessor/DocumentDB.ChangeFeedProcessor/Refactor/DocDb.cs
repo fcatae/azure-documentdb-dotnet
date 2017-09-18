@@ -48,7 +48,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 
             if (!string.IsNullOrEmpty(continuationToken))
             {
-                options.RequestContinuation = lease.ContinuationToken;
+                options.RequestContinuation = continuationToken;
             }
 
             return options;
