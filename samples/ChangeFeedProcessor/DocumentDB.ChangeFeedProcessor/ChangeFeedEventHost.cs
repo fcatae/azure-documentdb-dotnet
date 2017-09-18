@@ -203,6 +203,8 @@ namespace DocumentDB.ChangeFeedProcessor
 
         async Task IPartitionObserver<DocumentServiceLease>.OnPartitionAcquiredAsync(DocumentServiceLease lease)
         {
+            var docdb = new Refactor.DocDb(this.documentClient);
+
             Debug.Assert(lease != null && !string.IsNullOrEmpty(lease.Owner), "lease");
             TraceLog.Informational(string.Format("Host '{0}' partition {1}: acquired!", this.HostName, lease.PartitionId));
 
@@ -257,7 +259,9 @@ namespace DocumentDB.ChangeFeedProcessor
                         Trace.TraceWarning(string.Format("Added stats for partition '{0}' for which the lease was picked up after the host was started.", lease.PartitionId));
                     }
 
-                    IDocumentQuery<Document> query = this.documentClient.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
+                    IDocumentQuery<Document> query = docdb.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
+
+                    //IDocumentQuery<Document> query = this.documentClient.CreateDocumentChangeFeedQuery(this.collectionSelfLink, options);
 
                     TraceLog.Verbose(string.Format("Worker start: partition '{0}', continuation '{1}'", lease.PartitionId, lease.ContinuationToken));
 
@@ -492,7 +496,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
             Uri collectionUri = UriFactory.CreateDocumentCollectionUri(this.collectionLocation.DatabaseName, this.collectionLocation.CollectionName);
             ResourceResponse<DocumentCollection> collectionResponse = await this.documentClient.ReadDocumentCollectionAsync(
-                collectionUri, 
+                collectionUri,
                 new RequestOptions { PopulateQuotaInfo = true });
             DocumentCollection collection = collectionResponse.Resource;
             this.collectionSelfLink = collection.SelfLink;

@@ -18,12 +18,34 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         const string LSNPropertyName = "_lsn";
 
         private DocumentClient _documentClient;
+        private string _collectionSelfLink;
+
+        public DocDb()
+        {
+        }
 
         public DocDb(DocumentClient documentClient)
         {
             this._documentClient = documentClient;
         }
-       
+
+        async Task InitializeAsync(DocumentCollectionInfo collectionLocation)
+        {
+            var documentClient = new DocumentClient(collectionLocation.Uri, collectionLocation.MasterKey, collectionLocation.ConnectionPolicy);
+
+            Uri databaseUri = UriFactory.CreateDatabaseUri(collectionLocation.DatabaseName);
+            Database database = await documentClient.ReadDatabaseAsync(databaseUri);
+
+            Uri collectionUri = UriFactory.CreateDocumentCollectionUri(collectionLocation.DatabaseName, collectionLocation.CollectionName);
+            ResourceResponse<DocumentCollection> collectionResponse = await documentClient.ReadDocumentCollectionAsync(
+                collectionUri,
+                new RequestOptions { PopulateQuotaInfo = true });
+            DocumentCollection collection = collectionResponse.Resource;
+
+            this._documentClient = documentClient;
+            this._collectionSelfLink = collection.SelfLink;
+        }
+
         public async Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
         {
             Debug.Assert(!string.IsNullOrWhiteSpace(collectionSelfLink), "collectionSelfLink");
@@ -41,6 +63,11 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             while (!string.IsNullOrEmpty(response.ResponseContinuation));
 
             return partitionKeyRanges;
+        }
+
+        public IDocumentQuery<Document> CreateDocumentChangeFeedQuery(string collectionSelfLink, ChangeFeedOptions options)
+        {
+            return _documentClient.CreateDocumentChangeFeedQuery(collectionSelfLink, options);
         }
 
         public async Task<long> GetEstimatedRemainingWork(DocumentServiceLease existingLease, string collectionSelfLink)
