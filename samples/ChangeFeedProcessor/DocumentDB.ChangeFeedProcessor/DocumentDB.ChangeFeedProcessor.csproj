@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{43B55C4C-377C-49EF-9165-337542F4319E}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>DocumentDB.ChangeFeedProcessor</RootNamespace>
     <AssemblyName>DocumentDB.ChangeFeedProcessor</AssemblyName>
@@ -72,6 +72,7 @@
     <Compile Include="Internal\StatusCode.cs" />
     <Compile Include="Internal\SubStatusCode.cs" />
     <Compile Include="Internal\TraceLog.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
