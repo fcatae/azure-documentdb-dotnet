@@ -11,17 +11,19 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 {
     class CheckpointServices
     {
+        private CheckpointFrequency _checkpointOptions;
         private ICheckpointManager _checkpointMgr;
         ConcurrentDictionary<string, CheckpointStats> _statsSinceLastCheckpoint = new ConcurrentDictionary<string, CheckpointStats>();
 
-        public CheckpointServices(ICheckpointManager checkpointMgr)
+        public CheckpointServices(ICheckpointManager checkpointMgr, CheckpointFrequency checkpointOptions)
         {
             this._checkpointMgr = checkpointMgr;
+            this._checkpointOptions = checkpointOptions;
         }
 
-        public static bool IsCheckpointNeeded(DocumentServiceLease lease, CheckpointStats checkpointStats, CheckpointFrequency checkpointOptions)
+        public bool IsCheckpointNeeded(DocumentServiceLease lease, CheckpointStats checkpointStats)
         {
-            var options = new ChangeFeedHostOptions() { CheckpointFrequency = checkpointOptions };
+            var options = new ChangeFeedHostOptions() { CheckpointFrequency = _checkpointOptions };
 
             Debug.Assert(lease != null);
             Debug.Assert(checkpointStats != null);

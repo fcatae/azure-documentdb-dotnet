@@ -207,7 +207,7 @@ namespace DocumentDB.ChangeFeedProcessor
             await this.StopAsync(ChangeFeedObserverCloseReason.Shutdown);
             this.observerFactory = null;
         }
-
+        
         async Task IPartitionObserver<DocumentServiceLease>.OnPartitionAcquiredAsync(DocumentServiceLease lease)
         {
             var docdb = this._docdb;
@@ -224,9 +224,15 @@ namespace DocumentDB.ChangeFeedProcessor
             ChangeFeedObserverContext context = new ChangeFeedObserverContext { PartitionKeyRangeId = lease.PartitionId };
             CancellationTokenSource cancellation = new CancellationTokenSource();
 
+            var partitionManager = this.partitionManager;
+            Func<Task> stopAsync = () => { return this.StopAsync(ChangeFeedObserverCloseReason.ResourceGone); };
+            Action<string, bool, ChangeFeedObserverCloseReason> releasePartitionAsync = async (pid, isOwner, reason) => await this.partitionManager.TryReleasePartitionAsync(pid, isOwner, reason);
+
             // Create ChangeFeedOptions to use for this worker.
             ChangeFeedOptions options = docdb.GetChangeFeedOptions(lease.PartitionId, lease.ContinuationToken);
-            
+
+            var feedPollDelay = this.options.FeedPollDelay;
+
             var workerTask = await Task.Factory.StartNew(async () =>
             {
                 ChangeFeedObserverCloseReason? closeReason = null;
@@ -280,7 +286,7 @@ namespace DocumentDB.ChangeFeedProcessor
                                         // Shut down. The user will need to start over.
                                         // Note: this has to be a new task, can't await for shutdown here, as shudown awaits for all worker tasks.
                                         TraceLog.Error(string.Format("Partition {0}: resource gone (subStatus={1}). Aborting.", context.PartitionKeyRangeId, GetSubStatusCode(dcex)));
-                                        await Task.Factory.StartNew(() => this.StopAsync(ChangeFeedObserverCloseReason.ResourceGone));
+                                        await Task.Factory.StartNew(stopAsync);
                                         break;
                                     }
                                     else if (StatusCode.Gone == (StatusCode)dcex.StatusCode)
@@ -318,7 +324,7 @@ namespace DocumentDB.ChangeFeedProcessor
                                         exceptionDispatchInfo.Throw();
                                     }
 
-                                    await Task.Delay(dcex.RetryAfter != TimeSpan.Zero ? dcex.RetryAfter : this.options.FeedPollDelay, cancellation.Token);
+                                    await Task.Delay(dcex.RetryAfter != TimeSpan.Zero ? dcex.RetryAfter : feedPollDelay, cancellation.Token);
                                 }
 
                                 if (response != null)
@@ -347,7 +353,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
                                     checkpointStats.ProcessedDocCount += (uint)response.Count;
 
-                                    if (Refactor.CheckpointServices.IsCheckpointNeeded(lease, checkpointStats, this.options.CheckpointFrequency))
+                                    if (_checkpointSvcs.IsCheckpointNeeded(lease, checkpointStats))
                                     {
                                         lease = await CheckpointAsync(lease, response.ResponseContinuation, context);
                                         checkpointStats.Reset();
@@ -362,7 +368,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
                             if (this.isShutdown == 0)
                             {
-                                await Task.Delay(this.options.FeedPollDelay, cancellation.Token);
+                                await Task.Delay(feedPollDelay, cancellation.Token);
                             }
                         } // Outer while (this.isShutdown == 0) loop.
 
@@ -392,7 +398,7 @@ namespace DocumentDB.ChangeFeedProcessor
                     TraceLog.Informational(string.Format("Releasing lease for partition {0} due to an error, reason: {1}!", context.PartitionKeyRangeId, closeReason.Value));
 
                     // Note: this has to be a new task, because OnPartitionReleasedAsync awaits for worker task.
-                    await Task.Factory.StartNew(async () => await this.partitionManager.TryReleasePartitionAsync(context.PartitionKeyRangeId, true, closeReason.Value));
+                    await Task.Factory.StartNew( () => releasePartitionAsync(context.PartitionKeyRangeId, true, closeReason.Value));
                 }
 
                 TraceLog.Informational(string.Format("Partition {0}: worker finished!", context.PartitionKeyRangeId));
@@ -470,7 +476,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
             this.leaseManager = leaseManager;
 
-            this._checkpointSvcs = new Refactor.CheckpointServices((ICheckpointManager)leaseManager);
+            this._checkpointSvcs = new Refactor.CheckpointServices((ICheckpointManager)leaseManager, this.options.CheckpointFrequency);
 
             if (this.options.DiscardExistingLeases)
             {
@@ -691,31 +697,32 @@ namespace DocumentDB.ChangeFeedProcessor
 
             return -1;
         }
-                
-        private class WorkerData
-        {
-            public WorkerData(Task task, IChangeFeedObserver observer, ChangeFeedObserverContext context, CancellationTokenSource cancellation)
-            {
-                this.Task = task;
-                this.Observer = observer;
-                this.Context = context;
-                this.Cancellation = cancellation;
-            }
-
-            public Task Task { get; private set; }
-
-            public IChangeFeedObserver Observer { get; private set; }
-
-            public ChangeFeedObserverContext Context { get; private set; }
-
-            public CancellationTokenSource Cancellation { get; private set; }
-        }
-
+        
         /// <summary>
         /// Stats since last checkpoint.
         /// </summary>
     }
-    
+
+
+    class WorkerData
+    {
+        public WorkerData(Task task, IChangeFeedObserver observer, ChangeFeedObserverContext context, CancellationTokenSource cancellation)
+        {
+            this.Task = task;
+            this.Observer = observer;
+            this.Context = context;
+            this.Cancellation = cancellation;
+        }
+
+        public Task Task { get; private set; }
+
+        public IChangeFeedObserver Observer { get; private set; }
+
+        public ChangeFeedObserverContext Context { get; private set; }
+
+        public CancellationTokenSource Cancellation { get; private set; }
+    }
+
     class CheckpointStats
     {
         internal uint ProcessedDocCount { get; set; }
