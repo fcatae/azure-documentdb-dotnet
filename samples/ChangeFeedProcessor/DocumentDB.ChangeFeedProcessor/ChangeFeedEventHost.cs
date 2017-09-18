@@ -83,15 +83,14 @@ namespace DocumentDB.ChangeFeedProcessor
     {
         const string DefaultUserAgentSuffix = "changefeed-0.2";
         const string LeaseContainerName = "docdb-changefeed";
-        const string LSNPropertyName = "_lsn";
 
         readonly DocumentCollectionInfo collectionLocation;
 
         string leasePrefix;
-        string collectionSelfLink;
 
         Refactor.DocDb _docdb;
         //DocumentClient documentClient; //remove documentClient dependency -- use DocDb instead
+        //string collectionSelfLink; // use docdb
 
         ChangeFeedOptions changeFeedOptions;
         ChangeFeedHostOptions options;
@@ -190,7 +189,7 @@ namespace DocumentDB.ChangeFeedProcessor
             
             foreach (DocumentServiceLease existingLease in await this.leaseManager.ListLeases())
             {
-                remaining += await docdb.GetEstimatedRemainingWork(existingLease, this.collectionSelfLink);
+                remaining += await docdb.GetEstimatedRemainingWork(existingLease);
             }
 
             return remaining;
@@ -629,12 +628,12 @@ namespace DocumentDB.ChangeFeedProcessor
                 this.options.DegreeOfParallelism);
         }
 
-        Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
+        Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync()
         {
             var docdb = this._docdb;
             Debug.Assert(docdb != null);
 
-            return docdb.EnumPartitionKeyRangesAsync(collectionSelfLink);            
+            return docdb.EnumPartitionKeyRangesAsync();            
         }
 
         async Task StartAsync()
@@ -688,12 +687,15 @@ namespace DocumentDB.ChangeFeedProcessor
         /// <returns>True on success, false on failure.</returns>
         private async Task<bool> HandleSplitAsync(string partitionKeyRangeId, string continuationToken, string leaseId)
         {
+            var docdb = this._docdb;
+            Debug.Assert(docdb != null);
+
             Debug.Assert(!string.IsNullOrEmpty(partitionKeyRangeId));
             Debug.Assert(!string.IsNullOrEmpty(leaseId));
 
             TraceLog.Informational(string.Format("Partition {0} is gone due to split, continuation '{1}'", partitionKeyRangeId, continuationToken));
 
-            List<PartitionKeyRange> allRanges = await this.EnumPartitionKeyRangesAsync(this.collectionSelfLink);
+            List<PartitionKeyRange> allRanges = await docdb.EnumPartitionKeyRangesAsync();
 
             var childRanges = new List<PartitionKeyRange>(allRanges.Where(range => range.Parents.Contains(partitionKeyRangeId)));
             if (childRanges.Count < 2)

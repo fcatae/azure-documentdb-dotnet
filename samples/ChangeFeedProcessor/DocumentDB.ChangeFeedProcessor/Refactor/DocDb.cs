@@ -59,7 +59,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
         public async Task<Dictionary<string, PartitionKeyRange>> ListPartitionRange()
         {
             var ranges = new Dictionary<string, PartitionKeyRange>();
-            foreach (var range in await EnumPartitionKeyRangesAsync(_collectionSelfLink))
+            foreach (var range in await EnumPartitionKeyRangesAsync())
                 {
                 ranges.Add(range.Id, range);
             }
@@ -67,8 +67,10 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             return ranges;
         }
 
-        public async Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync(string collectionSelfLink)
+        public async Task<List<PartitionKeyRange>> EnumPartitionKeyRangesAsync()
         {
+            string collectionSelfLink = _collectionSelfLink;
+
             Debug.Assert(!string.IsNullOrWhiteSpace(collectionSelfLink), "collectionSelfLink");
 
             string partitionkeyRangesPath = string.Format(CultureInfo.InvariantCulture, "{0}/pkranges", collectionSelfLink);
@@ -91,7 +93,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
             return _documentClient.CreateDocumentChangeFeedQuery(collectionSelfLink, options);
         }
 
-        public async Task<long> GetEstimatedRemainingWork(DocumentServiceLease existingLease, string collectionSelfLink)
+        public async Task<long> GetEstimatedRemainingWork(DocumentServiceLease existingLease)
         {
             long remaining = 0;
 
@@ -102,7 +104,7 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 
             options.PartitionKeyRangeId = existingLease.PartitionId;
             options.RequestContinuation = existingLease.ContinuationToken;
-            IDocumentQuery<Document> query = this._documentClient.CreateDocumentChangeFeedQuery(collectionSelfLink, options);
+            IDocumentQuery<Document> query = this._documentClient.CreateDocumentChangeFeedQuery(_collectionSelfLink, options);
             FeedResponse<Document> response = null;
 
             try
