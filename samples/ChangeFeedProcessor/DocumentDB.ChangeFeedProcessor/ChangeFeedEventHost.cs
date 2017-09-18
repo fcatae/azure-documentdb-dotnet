@@ -354,7 +354,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
                                     checkpointStats.ProcessedDocCount += (uint)response.Count;
 
-                                    if (IsCheckpointNeeded(lease, checkpointStats))
+                                    if (Refactor.CheckpointServices.IsCheckpointNeeded(lease, checkpointStats, this.options.CheckpointFrequency))
                                     {
                                         lease = await CheckpointAsync(lease, response.ResponseContinuation, context);
                                         checkpointStats.Reset();
@@ -771,17 +771,18 @@ namespace DocumentDB.ChangeFeedProcessor
         /// <summary>
         /// Stats since last checkpoint.
         /// </summary>
-        private class CheckpointStats
+    }
+    
+    class CheckpointStats
+    {
+        internal uint ProcessedDocCount { get; set; }
+
+        internal DateTime LastCheckpointTime { get; set; }
+
+        internal void Reset()
         {
-            internal uint ProcessedDocCount { get; set; }
-
-            internal DateTime LastCheckpointTime { get; set; }
-
-            internal void Reset()
-            {
-                this.ProcessedDocCount = 0;
-                this.LastCheckpointTime = DateTime.Now;
-            }
+            this.ProcessedDocCount = 0;
+            this.LastCheckpointTime = DateTime.Now;
         }
     }
 }
