@@ -716,39 +716,7 @@ namespace DocumentDB.ChangeFeedProcessor
 
             return -1;
         }
-
-        private bool IsCheckpointNeeded(DocumentServiceLease lease, CheckpointStats checkpointStats)
-        {
-            Debug.Assert(lease != null);
-            Debug.Assert(checkpointStats != null);
-
-            if (checkpointStats.ProcessedDocCount == 0)
-            {
-                return false;
-            }
-
-            bool isCheckpointNeeded = true;
-
-            if (this.options.CheckpointFrequency != null &&
-                (this.options.CheckpointFrequency.ProcessedDocumentCount.HasValue || this.options.CheckpointFrequency.TimeInterval.HasValue))
-            {
-                // Note: if either condition is satisfied, we checkpoint.
-                isCheckpointNeeded = false;
-                if (this.options.CheckpointFrequency.ProcessedDocumentCount.HasValue)
-                {
-                    isCheckpointNeeded = checkpointStats.ProcessedDocCount >= this.options.CheckpointFrequency.ProcessedDocumentCount.Value;
-                }
-
-                if (this.options.CheckpointFrequency.TimeInterval.HasValue)
-                {
-                    isCheckpointNeeded = isCheckpointNeeded ||
-                        DateTime.Now - checkpointStats.LastCheckpointTime >= this.options.CheckpointFrequency.TimeInterval.Value;
-                }
-            }
-
-            return isCheckpointNeeded;
-        }
-        
+                
         private class WorkerData
         {
             public WorkerData(Task task, IChangeFeedObserver observer, ChangeFeedObserverContext context, CancellationTokenSource cancellation)
