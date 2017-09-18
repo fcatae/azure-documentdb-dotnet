@@ -97,10 +97,12 @@ namespace DocumentDB.ChangeFeedProcessor
 
         PartitionManager<DocumentServiceLease> partitionManager;
         ILeaseManager<DocumentServiceLease> leaseManager;
-        ICheckpointManager checkpointManager;
         DocumentCollectionInfo auxCollectionLocation;
 
+        Refactor.CheckpointServices _checkpointSvcs;
+        // ICheckpointManager checkpointManager; // use checkpointSvcs
         ConcurrentDictionary<string, CheckpointStats> statsSinceLastCheckpoint = new ConcurrentDictionary<string, CheckpointStats>();
+
         IChangeFeedObserverFactory observerFactory;
         ConcurrentDictionary<string, WorkerData> partitionKeyRangeIdToWorkerMap;
         int isShutdown = 0;
@@ -450,32 +452,9 @@ namespace DocumentDB.ChangeFeedProcessor
             return result;
         }
 
-        async Task<DocumentServiceLease> CheckpointAsync(DocumentServiceLease lease, string continuation, ChangeFeedObserverContext context)
+        Task<DocumentServiceLease> CheckpointAsync(DocumentServiceLease lease, string continuation, ChangeFeedObserverContext context)
         {
-            Debug.Assert(lease != null);
-            Debug.Assert(!string.IsNullOrEmpty(continuation));
-
-            DocumentServiceLease result = null;
-            try
-            {
-                result = (DocumentServiceLease)await this.checkpointManager.CheckpointAsync(lease, continuation, lease.SequenceNumber + 1);
-
-                Debug.Assert(result.ContinuationToken == continuation, "ContinuationToken was not updated!");
-                TraceLog.Informational(string.Format("Checkpoint: partition {0}, new continuation '{1}'", lease.PartitionId, continuation));
-            }
-            catch (LeaseLostException)
-            {
-                TraceLog.Warning(string.Format("Partition {0}: failed to checkpoint due to lost lease", context.PartitionKeyRangeId));
-                throw;
-            }
-            catch (Exception ex)
-            {
-                TraceLog.Error(string.Format("Partition {0}: failed to checkpoint due to unexpected error: {1}", context.PartitionKeyRangeId, ex.Message));
-                throw;
-            }
-
-            Debug.Assert(result != null);
-            return await Task.FromResult<DocumentServiceLease>(result);
+            return _checkpointSvcs.CheckpointAsync(lease, continuation, context);
         }
 
         async Task InitializeAsync()
@@ -499,7 +478,8 @@ namespace DocumentDB.ChangeFeedProcessor
             await leaseManager.InitializeAsync();
 
             this.leaseManager = leaseManager;
-            this.checkpointManager = (ICheckpointManager)leaseManager;
+
+            this._checkpointSvcs = new Refactor.CheckpointServices((ICheckpointManager)leaseManager);
 
             if (this.options.DiscardExistingLeases)
             {

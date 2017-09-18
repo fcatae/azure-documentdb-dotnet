@@ -10,6 +10,13 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 {
     class CheckpointServices
     {
+        private ICheckpointManager _checkpointMgr;
+
+        public CheckpointServices(ICheckpointManager checkpointMgr)
+        {
+            this._checkpointMgr = checkpointMgr;
+        }
+
         public static bool IsCheckpointNeeded(DocumentServiceLease lease, CheckpointStats checkpointStats, CheckpointFrequency checkpointOptions)
         {
             var options = new ChangeFeedHostOptions() { CheckpointFrequency = checkpointOptions };
@@ -43,5 +50,34 @@ namespace DocumentDB.ChangeFeedProcessor.Refactor
 
             return isCheckpointNeeded;
         }
+
+        public async Task<DocumentServiceLease> CheckpointAsync(DocumentServiceLease lease, string continuation, ChangeFeedObserverContext context)
+        {
+            Debug.Assert(lease != null);
+            Debug.Assert(!string.IsNullOrEmpty(continuation));
+
+            DocumentServiceLease result = null;
+            try
+            {
+                result = (DocumentServiceLease)await _checkpointMgr.CheckpointAsync(lease, continuation, lease.SequenceNumber + 1);
+
+                Debug.Assert(result.ContinuationToken == continuation, "ContinuationToken was not updated!");
+                TraceLog.Informational(string.Format("Checkpoint: partition {0}, new continuation '{1}'", lease.PartitionId, continuation));
+            }
+            catch (LeaseLostException)
+            {
+                TraceLog.Warning(string.Format("Partition {0}: failed to checkpoint due to lost lease", context.PartitionKeyRangeId));
+                throw;
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Error(string.Format("Partition {0}: failed to checkpoint due to unexpected error: {1}", context.PartitionKeyRangeId, ex.Message));
+                throw;
+            }
+
+            Debug.Assert(result != null);
+            return await Task.FromResult<DocumentServiceLease>(result);
+        }
+
     }
 }
