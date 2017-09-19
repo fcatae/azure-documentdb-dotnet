@@ -355,7 +355,9 @@ namespace DocumentDB.ChangeFeedProcessor
 
                                     if (_checkpointSvcs.IsCheckpointNeeded(lease, checkpointStats))
                                     {
-                                        lease = await CheckpointAsync(lease, response.ResponseContinuation, context);
+                                        var continuation = response.ResponseContinuation;
+                                        lease = await _checkpointSvcs.CheckpointAsync(lease, continuation, context);
+                                        
                                         checkpointStats.Reset();
                                     }
                                     else if (response.Count > 0)
